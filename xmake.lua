@@ -1,10 +1,11 @@
-add_requires("glfw", "glad", "assimp", "glm", "stb")
+add_requires("glfw", "glad", "glm", "stb")
 add_requires("imgui", {configs = {glfw = true, opengl3 = true}})
 
+add_rules("plugin.compile_commands.autoupdate", {outputdir = "."})
 target("modelviewer")
   set_kind("binary")
   set_languages("cxx20")
   add_files("src/main.cpp")
   add_syslinks("dl", "OpenGL")
-  add_packages("glfw", "glad", "assimp", "glm", "stb", "imgui")
+  add_packages("glfw", "glad", "glm", "stb", "imgui")
   set_rundir("$(projectdir)/")
