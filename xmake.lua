@@ -3,6 +3,7 @@ add_requires("imgui", {configs = {glfw = true, opengl3 = true}})
 
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "."})
 target("modelviewer")
+  set_symbols("debug")
   set_kind("binary")
   set_languages("cxx20")
   add_files("src/main.cpp")
