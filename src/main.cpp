@@ -1,10 +1,6 @@
 #include <cstdio>
 
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
-
-#include <glad/glad.h>
+#include <glad/gl.h>
 
 #include <GLFW/glfw3.h>
 
@@ -17,65 +13,85 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "tiny_gltf.h"
 
-#include <vector>
-
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
-void mouse_callback(GLFWwindow* window, double xpos, double ypos);
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-void do_movement(GLfloat deltaTime);
-
 const GLuint WIDTH = 800, HEIGHT = 600;
-const float aspectratio = static_cast<float>(WIDTH) / static_cast<float>(HEIGHT);
 
-float deltaTime = 0.0f;
-float lastFrame = 0.0f;
+void message_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const* message, void const* user_param) {
+  auto const src_str = [source]() {
+    switch (source)
+    {
+      case GL_DEBUG_SOURCE_API: return "API";
+      case GL_DEBUG_SOURCE_WINDOW_SYSTEM: return "WINDOW SYSTEM";
+      case GL_DEBUG_SOURCE_SHADER_COMPILER: return "SHADER COMPILER";
+      case GL_DEBUG_SOURCE_THIRD_PARTY: return "THIRD PARTY";
+      case GL_DEBUG_SOURCE_APPLICATION: return "APPLICATION";
+      case GL_DEBUG_SOURCE_OTHER: return "OTHER";
+      default: return "UNKNOWN";
+    }
+  }();
 
-glm::vec3 cameraPos   = glm::vec3(0.0f, 0.0f,  3.0f);
-glm::vec3 cameraUp    = glm::vec3(0.0f, 1.0f,  0.0f);
+  auto const type_str = [type]() {
+    switch (type)
+    {
+      case GL_DEBUG_TYPE_ERROR: return "ERROR";
+      case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "DEPRECATED_BEHAVIOR";
+      case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: return "UNDEFINED_BEHAVIOR";
+      case GL_DEBUG_TYPE_PORTABILITY: return "PORTABILITY";
+      case GL_DEBUG_TYPE_PERFORMANCE: return "PERFORMANCE";
+      case GL_DEBUG_TYPE_MARKER: return "MARKER";
+      case GL_DEBUG_TYPE_OTHER: return "OTHER";
+      default: return "UNKNOWN";
+    }
+  }();
 
-float lastX {0.0f};
-float lastY {0.0f};
-float xRotationSpeed = 2 * glm::pi<float>() / WIDTH;
-float yRotationSpeed = glm::pi<float>() / HEIGHT;
-bool keys[1024];
+  auto const severity_str = [severity]() {
+    switch (severity) {
+      case GL_DEBUG_SEVERITY_NOTIFICATION: return "NOTIFICATION";
+      case GL_DEBUG_SEVERITY_LOW: return "LOW";
+      case GL_DEBUG_SEVERITY_MEDIUM: return "MEDIUM";
+      case GL_DEBUG_SEVERITY_HIGH: return "HIGH";
+      default: return "UNKNOWN";
+    }
+  }();
 
-struct PointLight {
-  glm::vec3 position;
-
-  glm::vec3 ambient;
-  glm::vec3 diffuse;
-  glm::vec3 specular;
-
-  float constant;
-  float linear;
-  float quadratic;
-};
+  std::printf("%s, %s, %s, %d: %s\n", src_str, type_str, severity_str, id, message);
+}
 
 int main(int argc, char** argv)
 {
-  glfwInit();
+  glfwSetErrorCallback([](int error, const char* description) {
+      std::printf("Error: %s\n", description);
+  });
+
+  if (!glfwInit()) {
+    exit(EXIT_FAILURE);
+  }
+
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
   GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Model Viewer", nullptr, nullptr);
-  if (window == nullptr)
+  if (!window)
   {
     std::printf("Failed to create GLFW window\n" );
     glfwTerminate();
-    return -1;
+    exit(EXIT_FAILURE);
   }
+
   glfwMakeContextCurrent(window);
 
-  glfwSetKeyCallback(window, key_callback);
-  glfwSetCursorPosCallback(window, mouse_callback);
-  glfwSetScrollCallback(window, scroll_callback);
-
-  if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress))
+  auto version = gladLoadGL(glfwGetProcAddress);
+  if (!version)
   {
     std::printf("Failed to initialize OpenGL context\n" );
     return -1;
   }
+  printf("GL %d.%d\n", GLAD_VERSION_MAJOR(version), GLAD_VERSION_MINOR(version));
+  glEnable(GL_DEBUG_OUTPUT);
+  glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+  glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, nullptr, GL_FALSE);
+  glDebugMessageCallback(message_callback, nullptr);
+
+  glfwSwapInterval(1);
 
   tinygltf::Model gltfmodel;
   tinygltf::TinyGLTF loader;
@@ -108,8 +124,6 @@ int main(int argc, char** argv)
 #version 330 core
 layout (location = 0) in vec3 aPos;   // the position variable has attribute position 0
   
-out vec3 ourColor; // output a color to the fragment shader
-
 void main()
 {
     gl_Position = vec4(aPos, 1.0);
@@ -166,24 +180,25 @@ void main()
   const int positionAttr = triangles.attributes.find("POSITION")->second;
   tinygltf::Accessor posAccessor = gltfmodel.accessors[positionAttr];
   tinygltf::BufferView posBufView = gltfmodel.bufferViews[posAccessor.bufferView];
-  tinygltf::Buffer posBuf = gltfmodel.buffers[gltfmodel.bufferViews[posAccessor.bufferView].buffer];
-  /* tinygltf::Accessor indAccessor = gltfmodel.accessors[triangles.indices]; */
-  /* tinygltf::BufferView indBufView = gltfmodel.bufferViews[indAccessor.bufferView]; */
+  tinygltf::Buffer posBuf = gltfmodel.buffers[posBufView.buffer];
+  tinygltf::Accessor indAccessor = gltfmodel.accessors[triangles.indices];
+  tinygltf::BufferView indBufView = gltfmodel.bufferViews[indAccessor.bufferView];
 
   GLint alignment = GL_NONE;
   glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &alignment);
 
-  std::printf("OpenGL alignment: %d", alignment);
+  std::printf("OpenGL alignment: %d\n", alignment);
 
   GLuint vao;
   glCreateVertexArrays(1, &vao);
 
   GLuint meshBuf;
   glCreateBuffers(1, &meshBuf);
-  glNamedBufferStorage(meshBuf, posBuf.data.size(), posBuf.data.data(), GL_STATIC_DRAW);
 
-  glVertexArrayVertexBuffer(vao, 0, meshBuf, posBufView.byteOffset, posBufView.byteStride);
-  /* glVertexArrayElementBuffer(vao, meshBuf); */
+  glNamedBufferStorage(meshBuf, posBuf.data.size(), posBuf.data.data(), 0);
+
+  glVertexArrayVertexBuffer(vao, 0, meshBuf, posBufView.byteOffset, sizeof(glm::vec3));
+  glVertexArrayElementBuffer(vao, meshBuf);
 
   glEnableVertexArrayAttrib(vao, 0);
   glVertexArrayAttribFormat(vao, 0, 3, posAccessor.componentType, GL_FALSE, posAccessor.byteOffset);
@@ -195,71 +210,20 @@ void main()
 
   while(!glfwWindowShouldClose(window))
   {
-    GLfloat currentFrame = glfwGetTime();
-    deltaTime = currentFrame - lastFrame;
-    lastFrame = currentFrame;
-
     glfwPollEvents();
-    do_movement(deltaTime);
 
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    // Transformation matrices
-    glm::mat4 projection = glm::perspective(90.0f, aspectratio, 0.1f, 100.0f);
-    glm::mat4 view(1.0f);
-    glm::mat4 model(1.0f);
+    const float color[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    const float depth = 1.0f;
+    glClearBufferfv(GL_COLOR, 0, color);
+    glClearBufferfv(GL_DEPTH, 0, &depth);
 
     glUseProgram(program);
     glBindVertexArray(vao);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    /* glDrawElements(triangles.mode, indAccessor.count, indAccessor.componentType, (void *)indBufView.byteOffset); */
-    glDrawArrays(triangles.mode, 0, posAccessor.count);
-
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    /* glDrawElements(triangles.mode, indAccessor.count, indAccessor.componentType, (void *)indBufView.byteOffset); */
-    glDrawArrays(triangles.mode, 0, posAccessor.count);
-
+    glDrawElements(triangles.mode, indAccessor.count, indAccessor.componentType, (void *)(indBufView.byteOffset + indAccessor.byteOffset));
     glfwSwapBuffers(window);
   }
 
   // Cleanup
   glfwTerminate();
   return 0;
-}
-
-void do_movement(GLfloat deltaTime)
-{
-}
-
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode)
-{
-  if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-    glfwSetWindowShouldClose(window, GL_TRUE);
-  if (action == GLFW_PRESS)
-    keys[key] = true;
-  if (action == GLFW_RELEASE)
-    keys[key] = false;
-}
-
-bool firstMouse = true;
-void mouse_callback(GLFWwindow* window, double xpos, double ypos)
-{
-  if (firstMouse)
-  {
-    lastX = xpos;
-    lastY = ypos;
-    firstMouse = false;
-  }
-
-  float deltaX = xpos - lastX;
-  // Invert Y
-  float deltaY = lastY - ypos;
-
-  lastX = xpos;
-  lastY = ypos;
-}
-
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
-{
 }
