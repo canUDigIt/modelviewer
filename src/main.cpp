@@ -123,10 +123,12 @@ int main(int argc, char** argv)
   static const char* vSource = R"(
 #version 330 core
 layout (location = 0) in vec3 aPos;   // the position variable has attribute position 0
+
+uniform mat4 mvp;
   
 void main()
 {
-    gl_Position = vec4(aPos, 1.0);
+    gl_Position = mvp * vec4(aPos, 1.0);
 }
 )";
 
@@ -151,7 +153,6 @@ void main()
     glGetShaderInfoLog(vShader, 512, nullptr, infoLog);
     std::printf("ERROR::SHADER::VERTEX::COMPILATION_FAILED\n%s\n", infoLog);
   }
-
 
   GLuint fShader = glCreateShader(GL_FRAGMENT_SHADER);
   glShaderSource(fShader, 1, &fSource, nullptr);
@@ -208,6 +209,12 @@ void main()
 
   glEnable(GL_DEPTH_TEST);
 
+  glm::mat4 model = glm::mat4(1.0f);
+  glm::mat4 view = glm::mat4(1.0f);
+  glm::mat4 proj = glm::mat4(1.0f);
+  glm::mat4 mvp = proj * view * model;
+  GLint mvpLoc = glGetUniformLocation(program, "mvp");
+
   while(!glfwWindowShouldClose(window))
   {
     glfwPollEvents();
@@ -218,6 +225,7 @@ void main()
     glClearBufferfv(GL_DEPTH, 0, &depth);
 
     glUseProgram(program);
+    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
     glBindVertexArray(vao);
     glDrawElements(triangles.mode, indAccessor.count, indAccessor.componentType, (void *)(indBufView.byteOffset + indAccessor.byteOffset));
     glfwSwapBuffers(window);
