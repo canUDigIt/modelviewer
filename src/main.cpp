@@ -210,8 +210,8 @@ void main()
   glEnable(GL_DEPTH_TEST);
 
   glm::mat4 model = glm::mat4(1.0f);
-  glm::mat4 view = glm::mat4(1.0f);
-  glm::mat4 proj = glm::mat4(1.0f);
+  glm::mat4 view = glm::lookAtRH(glm::vec3(-2.0f, 1.0f, 3.0f), glm::vec3(0.5f, 0.5f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+  glm::mat4 proj = glm::perspectiveRH(45.0f, WIDTH / (float)HEIGHT, 1.0f, 100.0f);
   glm::mat4 mvp = proj * view * model;
   GLint mvpLoc = glGetUniformLocation(program, "mvp");
 
