@@ -56,8 +56,20 @@ void message_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GL
   std::printf("%s, %s, %s, %d: %s\n", src_str, type_str, severity_str, id, message);
 }
 
+struct Camera {
+  glm::vec3 pos;
+  glm::vec3 target;
+  glm::vec3 up;
+};
+
 int main(int argc, char** argv)
 {
+  Camera camera {
+    {-2.0f, 1.0f, 3.0f},
+    {0.5f, 0.5f, 0.0f},
+    {0.0f, 0.0f, 1.0f}
+  };
+
   glfwSetErrorCallback([](int error, const char* description) {
       std::printf("Error: %s\n", description);
   });
@@ -210,7 +222,7 @@ void main()
   glEnable(GL_DEPTH_TEST);
 
   glm::mat4 model = glm::mat4(1.0f);
-  glm::mat4 view = glm::lookAtRH(glm::vec3(-2.0f, 1.0f, 3.0f), glm::vec3(0.5f, 0.5f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+  glm::mat4 view = glm::lookAtRH(camera.pos, camera.target, camera.up);
   glm::mat4 proj = glm::perspectiveRH(45.0f, WIDTH / (float)HEIGHT, 1.0f, 100.0f);
   glm::mat4 mvp = proj * view * model;
   GLint mvpLoc = glGetUniformLocation(program, "mvp");
