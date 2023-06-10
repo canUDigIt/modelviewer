@@ -58,17 +58,101 @@ void message_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GL
 
 struct Camera {
   glm::vec3 pos;
-  glm::vec3 target;
-  glm::vec3 up;
+  glm::quat orientation;
 };
+
+struct MouseState {
+  glm::vec2 pos {0.0f};
+  bool pressedLeft = false;
+} mouseState;
+
+struct CameraMovement {
+  bool forward = false;
+  bool backward = false;
+  bool left = false;
+  bool right = false;
+  bool up = false;
+  bool down = false;
+  bool fastSpeed = false;
+  bool resetUp = false;
+  float lookSpeed = 4.0f;
+  float acceleration = 150.0f;
+  float damping = 0.2f;
+  float maxSpeed = 10.0f;
+  float fastCoef = 10.0f;
+  glm::vec3 moveSpeed {0.0f};
+} cameraMovement;
+
+glm::mat4 getViewMatrix(const Camera& camera)
+{
+  const glm::mat4 t = glm::translate(glm::mat4{1.0f}, -camera.pos);
+  const glm::mat4 r = glm::mat4_cast(camera.orientation);
+  return r * t;
+}
+
+void setUpVector(Camera& camera, const glm::vec3& up)
+{
+  const glm::mat4 view = getViewMatrix(camera);
+  const glm::vec3 dir = -glm::vec3(view[0][2], view[1][2], view[2][2]);
+  camera.orientation = glm::lookAt(camera.pos, camera.pos + dir, up);
+}
+
+void resetMousePosition(MouseState& ms, const glm::vec2& p)
+{
+  ms.pos = p;
+}
+
+void updateCamera(Camera& camera, double deltaSeconds, const MouseState& newState, MouseState& oldState, const CameraMovement& movement)
+{
+  if (cameraMovement.resetUp) setUpVector(camera, glm::vec3{0.0f, 1.0f, 0.0f});
+
+  if (mouseState.pressedLeft)
+  {
+    const glm::vec2 delta = newState.pos - oldState.pos;
+    const glm::quat deltaQuat = glm::quat(glm::vec3(movement.lookSpeed * delta.y, movement.lookSpeed * delta.x, 0.0f));
+    camera.orientation = glm::normalize(deltaQuat * camera.orientation);
+  }
+  oldState = newState;
+
+  const glm::mat4 v = glm::mat4_cast(camera.orientation);
+  const glm::vec3 forward = -glm::vec3(v[0][2], v[1][2], v[2][2]);
+  const glm::vec3 right = glm::vec3(v[0][0], v[1][0], v[2][0]);
+  const glm::vec3 up = glm::cross(right, forward);
+
+  glm::vec3 accel {0.0f};
+  if (cameraMovement.forward) accel += forward;
+  if (cameraMovement.backward) accel -= forward;
+  if (cameraMovement.left) accel -= right;
+  if (cameraMovement.right) accel += right;
+  if (cameraMovement.up) accel += up;
+  if (cameraMovement.down) accel -= up;
+  if (cameraMovement.fastSpeed) accel *= cameraMovement.fastCoef;
+
+  if (accel == glm::zero<glm::vec3>())
+  {
+    cameraMovement.moveSpeed -= cameraMovement.moveSpeed * std::min((1.0f / cameraMovement.damping) * static_cast<float>(deltaSeconds), 1.0f);
+  }
+  else
+  {
+    cameraMovement.moveSpeed += accel * cameraMovement.acceleration * static_cast<float>(deltaSeconds);
+    const float maxSpeed = cameraMovement.fastSpeed ? cameraMovement.maxSpeed * cameraMovement.fastCoef : cameraMovement.maxSpeed;
+    if (glm::length(cameraMovement.moveSpeed) > maxSpeed)
+    {
+      cameraMovement.moveSpeed = glm::normalize(cameraMovement.moveSpeed) * maxSpeed;
+    }
+
+    camera.pos += cameraMovement.moveSpeed * static_cast<float>(deltaSeconds);
+  }
+}
 
 int main(int argc, char** argv)
 {
-  Camera camera {
-    {-2.0f, 1.0f, 3.0f},
-    {0.5f, 0.5f, 0.0f},
-    {0.0f, 0.0f, 1.0f}
-  };
+  glm::vec3 camPos {-2.0f, 1.0f, 3.0f};
+  glm::vec3 target {0.5f, 0.5f, 0.0f};
+  glm::vec3 up {0.0f, 0.0f, 1.0f};
+  Camera camera { camPos, glm::lookAt(camPos, target, up) };
+
+  MouseState oldMouseState;
 
   glfwSetErrorCallback([](int error, const char* description) {
       std::printf("Error: %s\n", description);
@@ -88,6 +172,60 @@ int main(int argc, char** argv)
     glfwTerminate();
     exit(EXIT_FAILURE);
   }
+
+  glfwSetCursorPosCallback(window, [] (GLFWwindow* window, double x, double y) {
+      int width, height;
+      glfwGetFramebufferSize(window, &width, &height);
+      mouseState.pos.x = static_cast<float>(x / width);
+      mouseState.pos.y = static_cast<float>(y / width);
+  });
+
+  glfwSetMouseButtonCallback(window, [] (GLFWwindow* window, int button, int action, int mods) {
+      if (button == GLFW_MOUSE_BUTTON_LEFT)
+      {
+        mouseState.pressedLeft = action == GLFW_PRESS;
+      }
+  });
+
+  glfwSetKeyCallback(window, [] (GLFWwindow* window, int key, int scancode, int action, int mods) {
+      const bool press = action != GLFW_RELEASE;
+      if (key == GLFW_KEY_ESCAPE)
+      {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+      }
+      if (key == GLFW_KEY_W)
+      {
+        cameraMovement.forward = press;
+      }
+      if (key == GLFW_KEY_S)
+      {
+        cameraMovement.backward = press;
+      }
+      if (key == GLFW_KEY_A)
+      {
+        cameraMovement.left = press;
+      }
+      if (key == GLFW_KEY_D)
+      {
+        cameraMovement.right = press;
+      }
+      if (key == GLFW_KEY_1)
+      {
+        cameraMovement.up = press;
+      }
+      if (key == GLFW_KEY_2)
+      {
+        cameraMovement.down = press;
+      }
+      if (key == GLFW_MOD_SHIFT)
+      {
+        cameraMovement.fastSpeed = press;
+      }
+      if (key == GLFW_KEY_SPACE)
+      {
+        cameraMovement.resetUp = press;
+      }
+  });
 
   glfwMakeContextCurrent(window);
 
@@ -222,14 +360,21 @@ void main()
   glEnable(GL_DEPTH_TEST);
 
   glm::mat4 model = glm::mat4(1.0f);
-  glm::mat4 view = glm::lookAtRH(camera.pos, camera.target, camera.up);
   glm::mat4 proj = glm::perspectiveRH(45.0f, WIDTH / (float)HEIGHT, 1.0f, 100.0f);
-  glm::mat4 mvp = proj * view * model;
   GLint mvpLoc = glGetUniformLocation(program, "mvp");
+
+  double lastUpdate = 0.0;
 
   while(!glfwWindowShouldClose(window))
   {
     glfwPollEvents();
+    double currentUpdate = glfwGetTime();
+    double deltaSeconds = currentUpdate - lastUpdate;
+    lastUpdate = currentUpdate;
+
+    updateCamera(camera, deltaSeconds, mouseState, oldMouseState, cameraMovement);
+    glm::mat4 view = getViewMatrix(camera);
+    glm::mat4 mvp = proj * view * model;
 
     const float color[] = { 1.0f, 1.0f, 1.0f, 1.0f };
     const float depth = 1.0f;
